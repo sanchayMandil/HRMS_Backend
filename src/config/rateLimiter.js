@@ -1,4 +1,5 @@
 const rateLimit = require("express-rate-limit");
+const { ipKeyGenerator } = require("express-rate-limit");
 
 const json429 = (message) => ({
   success: false,
@@ -30,7 +31,7 @@ const refreshLimiter = rateLimit({
 const punchLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
-  keyGenerator: (req) => `punch:${req.user?._id?.toString() || req.ip}`,
+  keyGenerator: (req) => req.user?._id ? `punch:${req.user._id}` : `punch:${ipKeyGenerator(req)}`,
   standardHeaders: true,
   legacyHeaders: false,
   message: json429("Too many punch attempts. Please wait before trying again."),
