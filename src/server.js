@@ -9,6 +9,7 @@ const app = require("./app");
 const connectDatabase = require("./database/connectDatabase");
 require("./config/redis");
 const { appLogger } = require("./shared/logger");
+const scheduleMarkIncomplete = require("./jobs/markIncomplete");
 
 const PORT = process.env.PORT || 5000;
 
@@ -22,6 +23,7 @@ const startServer = async () => {
         env: process.env.NODE_ENV || "development",
         url: `http://localhost:${PORT}`,
       });
+      scheduleMarkIncomplete();
     });
   } catch (error) {
     appLogger.error("Failed to start server", { message: error.message });

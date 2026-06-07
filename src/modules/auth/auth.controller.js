@@ -26,7 +26,7 @@ const setAccessCookie = (res, token) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
-    maxAge: 15 * 60 * 1000,
+    maxAge: REFRESH_TTL_SECONDS * 1000, // cookie lives 7 days — JWT inside expires in 15 min
   });
 };
 
@@ -36,7 +36,6 @@ const setRefreshCookie = (res, token) => {
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
     maxAge: REFRESH_TTL_SECONDS * 1000,
-    path: "/api/auth/refresh",
   });
 };
 
@@ -162,7 +161,7 @@ const logout = asyncHandler(async (req, res) => {
   ]);
 
   res.clearCookie("token");
-  res.clearCookie("refreshToken", { path: "/api/auth/refresh" });
+  res.clearCookie("refreshToken");
 
   res.status(StatusCodes.OK).json({
     success: true,

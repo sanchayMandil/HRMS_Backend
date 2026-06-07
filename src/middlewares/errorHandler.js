@@ -19,14 +19,14 @@ const errorHandler = (err, req, res, next) => {
     message = `${field} already exists`;
   }
 
-  // JWT errors
+  // JWT errors — should only reach here if a raw JWT error escapes a handler
   if (err.name === "JsonWebTokenError") {
     statusCode = StatusCodes.UNAUTHORIZED;
-    message = "Invalid token";
+    message = "Invalid token, please log in again";
   }
   if (err.name === "TokenExpiredError") {
     statusCode = StatusCodes.UNAUTHORIZED;
-    message = "Token expired";
+    message = "Session expired, please log in again";
   }
 
   res.status(statusCode).json({

@@ -88,4 +88,107 @@ const updateUserRole = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getAllUsers, updateUserRole };
+// PATCH /api/users/:id/assign-manager  — admin assigns employee to a manager's team
+const assignManager = asyncHandler(async (req, res) => {
+  const { managerId } = req.body;
+  const { id } = req.params;
+
+  if (!managerId) throw new AppError("managerId is required", StatusCodes.BAD_REQUEST);
+
+  const [employee, manager] = await Promise.all([
+    User.findById(id),
+    User.findById(managerId),
+  ]);
+
+  if (!employee) throw new AppError("Employee not found", StatusCodes.NOT_FOUND);
+  if (!manager) throw new AppError("Manager not found", StatusCodes.NOT_FOUND);
+  if (manager.role !== ROLES.MANAGER) {
+    throw new AppError("Target user is not a manager", StatusCodes.BAD_REQUEST);
+  }
+  if (employee.role === ROLES.ADMIN) {
+    throw new AppError("Cannot assign a manager to an admin", StatusCodes.BAD_REQUEST);
+  }
+
+  employee.managerId = managerId;
+  await employee.save();
+
+  // Invalidate cache so protect middleware picks up the new managerId
+  await redis.del(userKey(employee.role, employee._id));
+
+  res.status(StatusCodes.OK).json({
+    success: true,
+    message: `${employee.name} assigned to ${manager.name}'s team`,
+    employee: {
+      _id: employee._id,
+      name: employee.name,
+      email: employee.email,
+      manager: { _id: manager._id, name: manager.name },
+    },
+  });
+});
+
+// DELETE /api/users/:id/assign-manager  — admin removes employee from team
+const unassignManager = asyncHandler(async (req, res) => {
+  const employee = await User.findById(req.params.id);
+  if (!employee) throw new AppError("Employee not found", StatusCodes.NOT_FOUND);
+
+  employee.managerId = undefined;
+  await employee.save();
+
+  await redis.del(userKey(employee.role, employee._id));
+
+  res.status(StatusCodes.OK).json({
+    success: true,
+    message: `${employee.name} removed from their team`,
+  });
+});
+
+// GET /api/users/teams  — admin sees every manager + their team members
+const getAllTeams = asyncHandler(async (req, res) => {
+  const managers = await User.find(
+    { role: ROLES.MANAGER, isActive: true },
+    "name email department"
+  );
+
+  const teams = await Promise.all(
+    managers.map(async (manager) => {
+      const members = await User.find(
+        { managerId: manager._id, isActive: true },
+        "name email department role"
+      );
+      return {
+        manager: { _id: manager._id, name: manager.name, email: manager.email, department: manager.department },
+        memberCount: members.length,
+        members,
+      };
+    })
+  );
+
+  const unassigned = await User.find(
+    { role: ROLES.EMPLOYEE, isActive: true, managerId: { $exists: false } },
+    "name email department"
+  );
+
+  res.status(StatusCodes.OK).json({
+    success: true,
+    totalTeams: teams.length,
+    teams,
+    unassigned: { total: unassigned.length, employees: unassigned },
+  });
+});
+
+// GET /api/users/my-team  — manager sees their own team
+const getMyTeam = asyncHandler(async (req, res) => {
+  const members = await User.find(
+    { managerId: req.user._id, isActive: true },
+    "name email department role createdAt"
+  );
+
+  res.status(StatusCodes.OK).json({
+    success: true,
+    total: members.length,
+    members,
+  });
+});
+
+module.exports = { getAllUsers, updateUserRole, assignManager, unassignManager, getAllTeams, getMyTeam };
