@@ -173,7 +173,8 @@ CLOUDINARY_API_SECRET=...
     "users": { "total": 12, "nonAdmin": 10 },
     "today": {
       "present": 7,
-      "absent": 3,
+      "absent": 1,
+      "notPunched": 2,
       "records": [
         { "_id": "664...", "userId": { "name": "Rahul Gupta", "role": "employee", "department": "Engineering" }, "date": "2026-06-08", "status": "ongoing", "punchIn": { "time": "2026-06-08T09:15:00.000Z" }, "punchOut": null, "workingHours": null, "validationStatus": "pending" }
       ]
@@ -191,7 +192,7 @@ CLOUDINARY_API_SECRET=...
   }
 }
 ```
-> `today.absent` = `nonAdmin` total − employees with a punch record. Admins are always excluded from all counts.
+> Three-state model (same as manager): `present` = has any punch record, `absent` = explicitly marked absent, `notPunched` = no record yet. Admins are always excluded from all counts.
 
 ### 7. Settings
 | Method | Endpoint | Access | Description |

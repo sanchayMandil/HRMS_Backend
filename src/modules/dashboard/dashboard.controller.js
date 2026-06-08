@@ -158,8 +158,11 @@ const adminDashboard = asyncHandler(async (req, res) => {
     ]),
   ]);
 
-  // Fix 3: present = non-absent punch records, absent = non-admin employees without a present record
+  // present  = has a punch-in record (any status except absent)
+  // absent   = explicitly marked absent (status === "absent")
+  // notPunched = no record at all — haven't arrived yet
   const presentRecords = todayAttendance.filter((a) => a.status !== "absent");
+  const absentRecords  = todayAttendance.filter((a) => a.status === "absent");
 
   const stats = monthlyStats[0] || {
     totalRecords: 0, completed: 0, incomplete: 0,
@@ -173,9 +176,10 @@ const adminDashboard = asyncHandler(async (req, res) => {
       month,
       users: { total: totalActiveUsers, nonAdmin: totalNonAdminUsers },
       today: {
-        present: presentRecords.length,
-        absent:  totalNonAdminUsers - presentRecords.length,
-        records: todayAttendance,
+        present:    presentRecords.length,
+        absent:     absentRecords.length,
+        notPunched: totalNonAdminUsers - presentRecords.length - absentRecords.length,
+        records:    todayAttendance,
       },
       month: {
         ...stats,
