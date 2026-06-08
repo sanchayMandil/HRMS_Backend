@@ -90,7 +90,13 @@ const managerDashboard = asyncHandler(async (req, res) => {
     Overtime.find({ userId: { $in: teamIds }, status: "pending" }).populate("userId", "name email"),
   ]);
 
-  const presentRecords = todayAttendance.filter((a) => a.status !== "absent");
+  // present  = has a punch-in record (any status except absent)
+  // absent   = explicitly marked absent (status === "absent")
+  // not_punched = no record at all — haven't punched in yet
+  const presentRecords    = todayAttendance.filter((a) => a.status !== "absent");
+  const absentRecords     = todayAttendance.filter((a) => a.status === "absent");
+  const presentIdSet      = new Set(presentRecords.map((a) => String(a.userId._id)));
+  const absentIdSet       = new Set(absentRecords.map((a) => String(a.userId._id)));
 
   res.status(StatusCodes.OK).json({
     success: true,
@@ -98,14 +104,16 @@ const managerDashboard = asyncHandler(async (req, res) => {
       date,
       month,
       team: {
-        total:   teamMembers.length,
-        present: presentRecords.length,
-        absent:  teamMembers.length - presentRecords.length,
+        total:       teamMembers.length,
+        present:     presentRecords.length,
+        absent:      absentRecords.length,
+        notPunched:  teamMembers.length - presentRecords.length - absentRecords.length,
         members: teamMembers.map((m) => {
-          const record = todayAttendance.find((a) => String(a.userId._id) === String(m._id));
+          const uid = String(m._id);
+          const record = todayAttendance.find((a) => String(a.userId._id) === uid);
           return {
             ...m.toObject(),
-            todayStatus: record ? record.status : "absent",
+            todayStatus: record ? record.status : "not_punched",
           };
         }),
       },
