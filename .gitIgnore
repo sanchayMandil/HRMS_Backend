@@ -11,8 +11,4 @@ yarn-debug.log*
 yarn-error.log*
 
 # Project tooling
-_bmad-output/
-_bmad
-.agents
-.claude
 .env.example
