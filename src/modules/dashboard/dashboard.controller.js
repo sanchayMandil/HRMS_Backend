@@ -12,23 +12,30 @@ const currentMonth = () => new Date().toISOString().slice(0, 7);
 // ── Employee dashboard ────────────────────────────────────────────────────────
 const employeeDashboard = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const month = currentMonth();
+  const date  = req.query.date  || todayDate();
+  const month = req.query.month || date.slice(0, 7);
 
-  // Fix 1: check Redis before hitting DB for today's record
+  // For today: try Redis cache first. For historical dates: skip cache, go to DB directly.
   let todayAttendance = null;
-  const cached = await redis.get(todayAttendanceKey(userId.toString()));
-  if (cached) {
-    todayAttendance = JSON.parse(cached);
-  } else {
-    todayAttendance = await Attendance.findOne({ userId, date: todayDate() });
-    if (todayAttendance) {
-      await redis.set(
-        todayAttendanceKey(userId.toString()),
-        JSON.stringify(todayAttendance.toObject()),
-        "EX",
-        ttlUntilMidnight()
-      );
+  const isToday = date === todayDate();
+
+  if (isToday) {
+    const cached = await redis.get(todayAttendanceKey(userId.toString()));
+    if (cached) {
+      todayAttendance = JSON.parse(cached);
+    } else {
+      todayAttendance = await Attendance.findOne({ userId, date });
+      if (todayAttendance) {
+        await redis.set(
+          todayAttendanceKey(userId.toString()),
+          JSON.stringify(todayAttendance.toObject()),
+          "EX",
+          ttlUntilMidnight()
+        );
+      }
     }
+  } else {
+    todayAttendance = await Attendance.findOne({ userId, date });
   }
 
   const [monthlyRecords, overtimeRecords] = await Promise.all([
@@ -47,8 +54,10 @@ const employeeDashboard = asyncHandler(async (req, res) => {
   res.status(StatusCodes.OK).json({
     success: true,
     dashboard: {
+      date,
+      month,
       today: todayAttendance,
-      month: {
+      monthStats: {
         totalRecords: monthlyRecords.length,
         completedDays,
         incompleteDays,
@@ -70,22 +79,24 @@ const employeeDashboard = asyncHandler(async (req, res) => {
 // ── Manager dashboard ────────────────────────────────────────────────────────
 const managerDashboard = asyncHandler(async (req, res) => {
   const managerId = req.user._id;
+  const date  = req.query.date  || todayDate();
+  const month = req.query.month || date.slice(0, 7);
 
   const teamMembers = await User.find({ managerId, isActive: true }, "_id name email department");
   const teamIds = teamMembers.map((u) => u._id);
 
   const [todayAttendance, pendingOvertime] = await Promise.all([
-    Attendance.find({ userId: { $in: teamIds }, date: todayDate() }).populate("userId", "name email"),
+    Attendance.find({ userId: { $in: teamIds }, date }).populate("userId", "name email"),
     Overtime.find({ userId: { $in: teamIds }, status: "pending" }).populate("userId", "name email"),
   ]);
 
-  // Fix: exclude manually-marked absent records from "present" count
   const presentRecords = todayAttendance.filter((a) => a.status !== "absent");
-  const presentIdSet   = new Set(presentRecords.map((a) => String(a.userId._id)));
 
   res.status(StatusCodes.OK).json({
     success: true,
     dashboard: {
+      date,
+      month,
       team: {
         total:   teamMembers.length,
         present: presentRecords.length,
@@ -108,18 +119,19 @@ const managerDashboard = asyncHandler(async (req, res) => {
 
 // ── Admin dashboard ───────────────────────────────────────────────────────────
 const adminDashboard = asyncHandler(async (req, res) => {
-  const month = currentMonth();
+  const date  = req.query.date  || todayDate();
+  const month = req.query.month || date.slice(0, 7);
 
   const [
     totalActiveUsers,
-    totalNonAdminUsers,   // Fix 3: count non-admins for absent calculation
+    totalNonAdminUsers,
     todayAttendance,
     pendingOvertime,
     monthlyStats,
   ] = await Promise.all([
     User.countDocuments({ isActive: true }),
     User.countDocuments({ isActive: true, role: { $ne: "admin" } }),
-    Attendance.find({ date: todayDate() }).populate("userId", "name role department"),
+    Attendance.find({ date }).populate("userId", "name role department"),
     Overtime.countDocuments({ status: "pending" }),
     Attendance.aggregate([
       { $match: { date: { $regex: `^${month}` } } },
@@ -149,6 +161,8 @@ const adminDashboard = asyncHandler(async (req, res) => {
   res.status(StatusCodes.OK).json({
     success: true,
     dashboard: {
+      date,
+      month,
       users: { total: totalActiveUsers, nonAdmin: totalNonAdminUsers },
       today: {
         present: presentRecords.length,
